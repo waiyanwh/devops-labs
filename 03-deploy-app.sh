@@ -37,6 +37,13 @@ build_images() {
     echo_info "Frontend image built: ${FRONTEND_FULL_IMAGE}"
 }
 
+# Determine k3d binary
+K3D_BIN="k3d"
+if [ -f "${SCRIPT_DIR}/k3d" ]; then
+    K3D_BIN="${SCRIPT_DIR}/k3d"
+    echo_info "Using local k3d binary: ${K3D_BIN}"
+fi
+
 # ============================================================================
 # Import Images into k3d
 # ============================================================================
@@ -45,10 +52,10 @@ import_images() {
     echo_header "Importing Images into k3d Cluster"
 
     echo_info "Importing ${BACKEND_FULL_IMAGE}..."
-    k3d image import "${BACKEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
+    ${K3D_BIN} image import "${BACKEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
 
     echo_info "Importing ${FRONTEND_FULL_IMAGE}..."
-    k3d image import "${FRONTEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
+    ${K3D_BIN} image import "${FRONTEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
 
     echo_info "Images imported successfully!"
 }
@@ -159,8 +166,26 @@ main() {
     echo "  Frontend:  ${FRONTEND_FULL_IMAGE}"
     echo ""
 
+    # Parse arguments
+    local build_only=false
+    for arg in "$@"; do
+        if [ "$arg" == "--build-only" ]; then
+            build_only=true
+        fi
+    done
+
     build_images
     import_images
+
+    if [ "$build_only" = true ]; then
+        echo ""
+        echo "============================================================"
+        echo -e "  ${GREEN}Build & Import Complete!${NC}"
+        echo "============================================================"
+        echo "Skiping deployment (--build-only specified)."
+        exit 0
+    fi
+
     deploy_app
     verify_deployment
 

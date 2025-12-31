@@ -21,9 +21,26 @@ A complete local DevOps lab featuring k3d, ArgoCD, Prometheus, Grafana, and a 3-
    ```
 
 4. **Deploy the demo application:**
+   
+   **Option A: Manual Deployment (Script)**
+   Good for local development loop.
    ```bash
    ./03-deploy-app.sh
    ```
+
+   **Option B: GitOps Deployment (ArgoCD)**
+   Good for testing the full CD pipeline.
+   1. Ensure code is pushed to your Git repo.
+   2. Edit `config.env` and set `GIT_REPO_URL` to your repo.
+   3. Apply the Application manifest:
+      ```bash
+      # First, build and import images (if not done)
+      ./03-deploy-app.sh --build-only  # You might need to edit script to support this or just let it run
+      
+      # Apply ArgoCD Application
+      kubectl apply -f gitops-root/application.yaml
+      ```
+   4. Sync via ArgoCD UI at http://argocd.localhost
 
 5. **Add hostnames to /etc/hosts:**
    ```bash
