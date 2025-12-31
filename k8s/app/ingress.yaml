@@ -1,6 +1,6 @@
 ---
 # Frontend IngressRoute (app.localhost)
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: frontend
@@ -16,7 +16,7 @@ spec:
           port: 80
 ---
 # Backend API IngressRoute (api.localhost)
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: backend-api

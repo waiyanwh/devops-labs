@@ -19,6 +19,13 @@ else
     exit 1
 fi
 
+# Determine k3d binary
+K3D_BIN="k3d"
+if [ -f "${SCRIPT_DIR}/k3d" ]; then
+    K3D_BIN="${SCRIPT_DIR}/k3d"
+    echo_info "Using local k3d binary: ${K3D_BIN}"
+fi
+
 # ============================================================================
 # Step 1: Check Prerequisites
 # ============================================================================
@@ -27,7 +34,7 @@ check_prerequisites() {
     echo_info "Checking prerequisites..."
 
     # Check k3d
-    if ! command -v k3d &> /dev/null; then
+    if ! command -v "${K3D_BIN}" &> /dev/null && [ ! -f "${K3D_BIN}" ]; then
         echo_error "k3d is not installed."
         echo_info "To install k3d, run one of these commands:"
         echo ""
@@ -42,7 +49,7 @@ check_prerequisites() {
         echo ""
         exit 1
     else
-        echo_info "k3d is installed: $(k3d version | head -1)"
+        echo_info "k3d is installed: $(${K3D_BIN} version | head -1)"
     fi
 
     # Check kubectl
@@ -87,13 +94,13 @@ create_cluster() {
     echo_info "Creating k3d cluster '${CLUSTER_NAME}'..."
 
     # Check if cluster already exists
-    if k3d cluster list | grep -q "${CLUSTER_NAME}"; then
+    if ${K3D_BIN} cluster list | grep -q "${CLUSTER_NAME}"; then
         echo_warn "Cluster '${CLUSTER_NAME}' already exists."
         read -p "Do you want to delete and recreate it? (y/N): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo_info "Deleting existing cluster..."
-            k3d cluster delete "${CLUSTER_NAME}"
+            ${K3D_BIN} cluster delete "${CLUSTER_NAME}"
         else
             echo_info "Keeping existing cluster. Skipping creation."
             return 0
@@ -101,7 +108,7 @@ create_cluster() {
     fi
 
     # Build k3d create command
-    local k3d_cmd="k3d cluster create ${CLUSTER_NAME}"
+    local k3d_cmd="${K3D_BIN} cluster create ${CLUSTER_NAME}"
     k3d_cmd+=" --servers ${SERVER_COUNT}"
     k3d_cmd+=" --agents ${AGENT_COUNT}"
     k3d_cmd+=" --port ${HTTP_PORT}:80@loadbalancer"
@@ -128,7 +135,7 @@ create_cluster() {
 configure_kubeconfig() {
     echo_info "Configuring kubeconfig..."
 
-    k3d kubeconfig merge "${CLUSTER_NAME}" --kubeconfig-merge-default --kubeconfig-switch-context
+    ${K3D_BIN} kubeconfig merge "${CLUSTER_NAME}" --kubeconfig-merge-default --kubeconfig-switch-context
 
     echo_info "Kubeconfig merged and context switched to k3d-${CLUSTER_NAME}"
 }

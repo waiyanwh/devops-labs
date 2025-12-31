@@ -57,9 +57,11 @@ All configurable values are in `config.env`. Key settings:
 ```
 devops-labs/
 ├── config.env              # ⚙️  Configuration file (edit this!)
-├── 01-setup-cluster.sh     # Creates k3d cluster
-├── 02-install-tools.sh     # Installs ArgoCD + Prometheus
+├── 01-setup-cluster.sh     # Creates k3d cluster (supports K8s 1.35+)
+├── 02-install-tools.sh     # Installs ArgoCD + Prometheus (patched for Traefik v2)
 ├── 03-deploy-app.sh        # Builds and deploys the app
+├── 04-chaos-test.sh        # 🐒 Chaos Monkey resilience tests
+├── 05-k8s-compat-test.sh   # 🔄 K8s version compatibility matrix
 ├── src/
 │   ├── backend/            # FastAPI with Prometheus metrics
 │   └── frontend/           # Nginx + HTML/JS
@@ -75,6 +77,29 @@ devops-labs/
 - k3d
 - kubectl
 - Helm 3
+
+## Cleanup
+
+## Testing
+
+This project includes scripts for resilience and compatibility testing:
+
+### Chaos Monkey
+Run reliability tests (Pod deletion, DB outage, etc.):
+```bash
+./04-chaos-test.sh
+```
+
+### K8s Compatibility
+Test the stack against different Kubernetes versions (v1.22 - v1.35):
+```bash
+# Test specific version
+./05-k8s-compat-test.sh 1.35
+
+# Test all supported versions
+./05-k8s-compat-test.sh all
+```
+> **Note:** K8s 1.35+ requires `k3d` v5.7.4+. The setup script tries to detect/download it automatically.
 
 ## Cleanup
 
