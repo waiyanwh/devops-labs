@@ -3,32 +3,21 @@
 # ============================================================================
 # K3d DevOps Lab Cluster Setup Script
 # ============================================================================
-# This script provisions a k3d Kubernetes cluster with:
-# - 1 Server node (Master)
-# - 3 Agent nodes (Workers)
-# - Port mappings: 80, 443, 8080
-# - Default K3s Traefik ingress controller enabled
+# This script provisions a k3d Kubernetes cluster with configurable options.
+# All settings are loaded from config.env
 # ============================================================================
 
 set -e
 
-CLUSTER_NAME="devops-lab"
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
-}
-
-echo_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-echo_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+# Load configuration
+if [ -f "${SCRIPT_DIR}/config.env" ]; then
+    source "${SCRIPT_DIR}/config.env"
+else
+    echo "Error: config.env not found. Please create it from config.env.example"
+    exit 1
+fi
 
 # ============================================================================
 # Step 1: Check Prerequisites
@@ -111,18 +100,23 @@ create_cluster() {
         fi
     fi
 
-    # Create the cluster with specified configuration
-    # - 1 Server (master) node
-    # - 3 Agent (worker) nodes
-    # - Port mappings for loadbalancer
-    # - Default Traefik is enabled (no --k3s-arg to disable it)
-    k3d cluster create "${CLUSTER_NAME}" \
-        --servers 1 \
-        --agents 3 \
-        --port "80:80@loadbalancer" \
-        --port "443:443@loadbalancer" \
-        --port "8080:8080@loadbalancer" \
-        --wait
+    # Build k3d create command
+    local k3d_cmd="k3d cluster create ${CLUSTER_NAME}"
+    k3d_cmd+=" --servers ${SERVER_COUNT}"
+    k3d_cmd+=" --agents ${AGENT_COUNT}"
+    k3d_cmd+=" --port ${HTTP_PORT}:80@loadbalancer"
+    k3d_cmd+=" --port ${HTTPS_PORT}:443@loadbalancer"
+    k3d_cmd+=" --port ${TRAEFIK_DASHBOARD_PORT}:8080@loadbalancer"
+    
+    # Add image if specified
+    if [ -n "${K3S_IMAGE}" ]; then
+        k3d_cmd+=" --image ${K3S_IMAGE}"
+    fi
+    
+    k3d_cmd+=" --wait"
+
+    echo_info "Running: ${k3d_cmd}"
+    eval "${k3d_cmd}"
 
     echo_info "Cluster '${CLUSTER_NAME}' created successfully!"
 }
@@ -134,8 +128,6 @@ create_cluster() {
 configure_kubeconfig() {
     echo_info "Configuring kubeconfig..."
 
-    # k3d automatically merges kubeconfig to default location
-    # but we can explicitly do it
     k3d kubeconfig merge "${CLUSTER_NAME}" --kubeconfig-merge-default --kubeconfig-switch-context
 
     echo_info "Kubeconfig merged and context switched to k3d-${CLUSTER_NAME}"
@@ -148,28 +140,29 @@ configure_kubeconfig() {
 verify_cluster() {
     echo_info "Verifying cluster connectivity..."
 
-    # Wait for nodes to be ready
-    echo_info "Waiting for all nodes to be Ready..."
+    local expected_nodes=$((SERVER_COUNT + AGENT_COUNT))
     local max_retries=30
     local retry=0
 
+    echo_info "Waiting for all ${expected_nodes} nodes to be Ready..."
+
     while [ $retry -lt $max_retries ]; do
         ready_nodes=$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || echo "0")
-        if [ "$ready_nodes" -eq 4 ]; then
+        if [ "$ready_nodes" -eq "$expected_nodes" ]; then
             break
         fi
-        echo_info "Waiting for nodes... ($ready_nodes/4 ready)"
+        echo_info "Waiting for nodes... ($ready_nodes/${expected_nodes} ready)"
         sleep 5
         ((retry++))
     done
 
-    if [ "$ready_nodes" -ne 4 ]; then
+    if [ "$ready_nodes" -ne "$expected_nodes" ]; then
         echo_error "Not all nodes are ready after waiting. Please check cluster status."
         kubectl get nodes
         exit 1
     fi
 
-    echo_info "All 4 nodes are Ready!"
+    echo_info "All ${expected_nodes} nodes are Ready!"
     echo ""
     kubectl get nodes -o wide
     echo ""
@@ -195,6 +188,13 @@ main() {
     echo "  K3d DevOps Lab Cluster Setup"
     echo "============================================================"
     echo ""
+    echo "Configuration:"
+    echo "  Cluster Name:  ${CLUSTER_NAME}"
+    echo "  Servers:       ${SERVER_COUNT}"
+    echo "  Agents:        ${AGENT_COUNT}"
+    echo "  HTTP Port:     ${HTTP_PORT}"
+    echo "  HTTPS Port:    ${HTTPS_PORT}"
+    echo ""
 
     check_prerequisites
     create_cluster
@@ -207,17 +207,17 @@ main() {
     echo "============================================================"
     echo ""
     echo "Cluster Name: ${CLUSTER_NAME}"
-    echo "Nodes: 1 server + 3 agents = 4 total"
+    echo "Nodes: ${SERVER_COUNT} server + ${AGENT_COUNT} agents = $((SERVER_COUNT + AGENT_COUNT)) total"
     echo ""
     echo "Port Mappings:"
-    echo "  - localhost:80   -> loadbalancer:80"
-    echo "  - localhost:443  -> loadbalancer:443"
-    echo "  - localhost:8080 -> loadbalancer:8080"
+    echo "  - localhost:${HTTP_PORT}   -> loadbalancer:80"
+    echo "  - localhost:${HTTPS_PORT}  -> loadbalancer:443"
+    echo "  - localhost:${TRAEFIK_DASHBOARD_PORT} -> loadbalancer:8080"
     echo ""
     echo "Next steps:"
     echo "  1. Verify Traefik: curl localhost (should return 404)"
-    echo "  2. Access Traefik dashboard (if enabled)"
-    echo "  3. Deploy your applications!"
+    echo "  2. Run ./02-install-tools.sh to install ArgoCD and monitoring"
+    echo "  3. Run ./03-deploy-app.sh to deploy the application"
     echo ""
 }
 

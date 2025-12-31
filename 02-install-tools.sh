@@ -3,25 +3,21 @@
 # ============================================================================
 # GitOps and Observability Stack Installation Script
 # ============================================================================
-# Installs:
-# - ArgoCD (GitOps)
-# - Kube-Prometheus-Stack (Prometheus + Grafana)
-# - Traefik IngressRoutes for both
+# Installs ArgoCD and Kube-Prometheus-Stack with configurable options.
+# All settings are loaded from config.env
 # ============================================================================
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
 
-echo_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-echo_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-echo_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-echo_header() { echo -e "\n${CYAN}=== $1 ===${NC}\n"; }
+# Load configuration
+if [ -f "${SCRIPT_DIR}/config.env" ]; then
+    source "${SCRIPT_DIR}/config.env"
+else
+    echo "Error: config.env not found. Please create it from config.env.example"
+    exit 1
+fi
 
 # ============================================================================
 # Prerequisites Check
@@ -63,7 +59,7 @@ install_argocd() {
     echo_header "Installing ArgoCD"
 
     # Create namespace
-    kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create namespace "${ARGOCD_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
     # Add ArgoCD Helm repo
     echo_info "Adding ArgoCD Helm repository..."
@@ -71,10 +67,10 @@ install_argocd() {
     helm repo update
 
     # Install ArgoCD
-    echo_info "Installing ArgoCD via Helm..."
+    echo_info "Installing ArgoCD via Helm (version ${ARGOCD_CHART_VERSION})..."
     helm upgrade --install argocd argo/argo-cd \
-        --namespace argocd \
-        --version 4.10.9 \
+        --namespace "${ARGOCD_NAMESPACE}" \
+        --version "${ARGOCD_CHART_VERSION}" \
         --set server.service.type=ClusterIP \
         --set server.extraArgs="{--insecure}" \
         --set configs.params."server\.insecure"=true \
@@ -88,26 +84,26 @@ install_argocd() {
 
     # Wait for ArgoCD server to be ready
     echo_info "Waiting for ArgoCD server to be ready..."
-    kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+    kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n "${ARGOCD_NAMESPACE}"
 
     # Get initial admin password
     echo_info "Retrieving ArgoCD admin password..."
     sleep 5
-    ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d)
+    ARGOCD_PASSWORD=$(kubectl -n "${ARGOCD_NAMESPACE}" get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d)
     
     if [ -n "$ARGOCD_PASSWORD" ]; then
         echo ""
         echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${GREEN}║              ArgoCD Credentials                            ║${NC}"
         echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
-        echo -e "${GREEN}║${NC}  URL:      http://argocd.localhost                         ${GREEN}║${NC}"
-        echo -e "${GREEN}║${NC}  Username: admin                                           ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  URL:      http://${ARGOCD_HOSTNAME}                         ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}  Username: ${ARGOCD_ADMIN_USER}                                           ${GREEN}║${NC}"
         echo -e "${GREEN}║${NC}  Password: ${ARGOCD_PASSWORD}                              ${GREEN}║${NC}"
         echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
         echo ""
     else
         echo_warn "Could not retrieve ArgoCD password. Try:"
-        echo "  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d"
+        echo "  kubectl -n ${ARGOCD_NAMESPACE} get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d"
     fi
 }
 
@@ -119,7 +115,7 @@ install_prometheus_stack() {
     echo_header "Installing Kube-Prometheus-Stack"
 
     # Create namespace
-    kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create namespace "${MONITORING_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
     # Add Prometheus Helm repo
     echo_info "Adding Prometheus community Helm repository..."
@@ -127,12 +123,11 @@ install_prometheus_stack() {
     helm repo update
 
     # Install kube-prometheus-stack
-    # Note: nodeExporter is disabled because it has hostPath mount issues in k3d/docker
-    echo_info "Installing kube-prometheus-stack via Helm..."
+    echo_info "Installing kube-prometheus-stack via Helm (version ${PROMETHEUS_STACK_VERSION})..."
     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-        --namespace monitoring \
-        --version 39.13.3 \
-        --set grafana.adminPassword=admin \
+        --namespace "${MONITORING_NAMESPACE}" \
+        --version "${PROMETHEUS_STACK_VERSION}" \
+        --set grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
         --set grafana.service.type=ClusterIP \
         --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
         --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
@@ -148,15 +143,15 @@ install_prometheus_stack() {
 
     # Wait for Grafana to be ready
     echo_info "Waiting for Grafana to be ready..."
-    kubectl wait --for=condition=available --timeout=300s deployment/kube-prometheus-stack-grafana -n monitoring
+    kubectl wait --for=condition=available --timeout=300s deployment/kube-prometheus-stack-grafana -n "${MONITORING_NAMESPACE}"
 
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║              Grafana Credentials                           ║${NC}"
     echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${GREEN}║${NC}  URL:      http://grafana.localhost                         ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Username: admin                                            ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Password: admin                                            ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  URL:      http://${GRAFANA_HOSTNAME}                         ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Username: ${GRAFANA_ADMIN_USER}                                            ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Password: ${GRAFANA_ADMIN_PASSWORD}                                            ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -169,11 +164,11 @@ verify_installation() {
     echo_header "Verifying Installation"
 
     echo_info "ArgoCD pods:"
-    kubectl get pods -n argocd
+    kubectl get pods -n "${ARGOCD_NAMESPACE}"
 
     echo ""
     echo_info "Monitoring pods:"
-    kubectl get pods -n monitoring
+    kubectl get pods -n "${MONITORING_NAMESPACE}"
 
     echo ""
     echo_info "IngressRoutes:"
@@ -183,8 +178,8 @@ verify_installation() {
     echo_info "Testing endpoints..."
     
     # Test ArgoCD
-    echo -n "  ArgoCD (argocd.localhost): "
-    ARGOCD_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://argocd.localhost 2>/dev/null || echo "000")
+    echo -n "  ArgoCD (${ARGOCD_HOSTNAME}): "
+    ARGOCD_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${ARGOCD_HOSTNAME}" http://127.0.0.1 2>/dev/null || echo "000")
     if [ "$ARGOCD_STATUS" = "200" ] || [ "$ARGOCD_STATUS" = "307" ]; then
         echo -e "${GREEN}✓ Reachable (HTTP $ARGOCD_STATUS)${NC}"
     else
@@ -192,8 +187,8 @@ verify_installation() {
     fi
 
     # Test Grafana
-    echo -n "  Grafana (grafana.localhost): "
-    GRAFANA_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://grafana.localhost 2>/dev/null || echo "000")
+    echo -n "  Grafana (${GRAFANA_HOSTNAME}): "
+    GRAFANA_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${GRAFANA_HOSTNAME}" http://127.0.0.1 2>/dev/null || echo "000")
     if [ "$GRAFANA_STATUS" = "200" ] || [ "$GRAFANA_STATUS" = "302" ]; then
         echo -e "${GREEN}✓ Reachable (HTTP $GRAFANA_STATUS)${NC}"
     else
@@ -211,6 +206,12 @@ main() {
     echo "  GitOps & Observability Stack Installation"
     echo "============================================================"
     echo ""
+    echo "Configuration:"
+    echo "  ArgoCD Chart Version:     ${ARGOCD_CHART_VERSION}"
+    echo "  Prometheus Chart Version: ${PROMETHEUS_STACK_VERSION}"
+    echo "  ArgoCD Namespace:         ${ARGOCD_NAMESPACE}"
+    echo "  Monitoring Namespace:     ${MONITORING_NAMESPACE}"
+    echo ""
 
     check_prerequisites
     install_argocd
@@ -223,13 +224,11 @@ main() {
     echo "============================================================"
     echo ""
     echo "Access your services:"
-    echo "  • ArgoCD:  http://argocd.localhost   (admin / <password above>)"
-    echo "  • Grafana: http://grafana.localhost  (admin / admin)"
+    echo "  • ArgoCD:  http://${ARGOCD_HOSTNAME}   (${ARGOCD_ADMIN_USER} / <password above>)"
+    echo "  • Grafana: http://${GRAFANA_HOSTNAME}  (${GRAFANA_ADMIN_USER} / ${GRAFANA_ADMIN_PASSWORD})"
     echo ""
-    echo "Useful commands:"
-    echo "  kubectl get pods -n argocd      # ArgoCD pods"
-    echo "  kubectl get pods -n monitoring  # Monitoring pods"
-    echo "  kubectl get ingressroute -A     # All IngressRoutes"
+    echo "Add to /etc/hosts if needed:"
+    echo "  127.0.0.1 ${ARGOCD_HOSTNAME} ${GRAFANA_HOSTNAME}"
     echo ""
 }
 

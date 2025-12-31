@@ -3,24 +3,21 @@
 # ============================================================================
 # 3-Tier Application Build and Deploy Script
 # ============================================================================
-# Builds Docker images, imports them into k3d, and deploys to Kubernetes
+# Builds Docker images, imports them into k3d, and deploys to Kubernetes.
+# All settings are loaded from config.env
 # ============================================================================
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLUSTER_NAME="devops-lab"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-echo_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-echo_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-echo_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-echo_header() { echo -e "\n${CYAN}=== $1 ===${NC}\n"; }
+# Load configuration
+if [ -f "${SCRIPT_DIR}/config.env" ]; then
+    source "${SCRIPT_DIR}/config.env"
+else
+    echo "Error: config.env not found. Please create it from config.env.example"
+    exit 1
+fi
 
 # ============================================================================
 # Build Docker Images
@@ -30,14 +27,14 @@ build_images() {
     echo_header "Building Docker Images"
 
     # Build Backend
-    echo_info "Building backend image..."
-    docker build -t lab-backend:v1 "${SCRIPT_DIR}/src/backend/"
-    echo_info "Backend image built: lab-backend:v1"
+    echo_info "Building backend image (${BACKEND_FULL_IMAGE})..."
+    docker build -t "${BACKEND_FULL_IMAGE}" "${SCRIPT_DIR}/src/backend/"
+    echo_info "Backend image built: ${BACKEND_FULL_IMAGE}"
 
     # Build Frontend
-    echo_info "Building frontend image..."
-    docker build -t lab-frontend:v1 "${SCRIPT_DIR}/src/frontend/"
-    echo_info "Frontend image built: lab-frontend:v1"
+    echo_info "Building frontend image (${FRONTEND_FULL_IMAGE})..."
+    docker build -t "${FRONTEND_FULL_IMAGE}" "${SCRIPT_DIR}/src/frontend/"
+    echo_info "Frontend image built: ${FRONTEND_FULL_IMAGE}"
 }
 
 # ============================================================================
@@ -47,11 +44,11 @@ build_images() {
 import_images() {
     echo_header "Importing Images into k3d Cluster"
 
-    echo_info "Importing lab-backend:v1..."
-    k3d image import lab-backend:v1 -c "${CLUSTER_NAME}"
+    echo_info "Importing ${BACKEND_FULL_IMAGE}..."
+    k3d image import "${BACKEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
 
-    echo_info "Importing lab-frontend:v1..."
-    k3d image import lab-frontend:v1 -c "${CLUSTER_NAME}"
+    echo_info "Importing ${FRONTEND_FULL_IMAGE}..."
+    k3d image import "${FRONTEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
 
     echo_info "Images imported successfully!"
 }
@@ -63,25 +60,36 @@ import_images() {
 deploy_app() {
     echo_header "Deploying Application to Kubernetes"
 
+    # Create namespace first
+    echo_info "Creating namespace '${APP_NAMESPACE}'..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/namespace.yaml"
+
+    # Apply Grafana dashboard to monitoring namespace
+    echo_info "Deploying Grafana dashboard..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/grafana-dashboard.yaml"
+
     # Deploy in order: Database -> Backend -> Frontend -> Ingress
     echo_info "Deploying PostgreSQL..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/app/postgres.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/postgres.yaml"
 
     echo_info "Waiting for PostgreSQL to be ready..."
-    kubectl wait --for=condition=available --timeout=120s deployment/postgres
+    kubectl wait --for=condition=available --timeout=120s deployment/postgres -n "${APP_NAMESPACE}"
 
     echo_info "Deploying Backend..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/app/backend.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/backend.yaml"
 
     echo_info "Deploying Frontend..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/app/frontend.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/frontend.yaml"
 
     echo_info "Creating IngressRoutes..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/app/ingress.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/ingress.yaml"
+
+    echo_info "Creating ServiceMonitor..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/servicemonitor.yaml"
 
     echo_info "Waiting for all deployments to be ready..."
-    kubectl wait --for=condition=available --timeout=120s deployment/backend
-    kubectl wait --for=condition=available --timeout=120s deployment/frontend
+    kubectl wait --for=condition=available --timeout=120s deployment/backend -n "${APP_NAMESPACE}"
+    kubectl wait --for=condition=available --timeout=120s deployment/frontend -n "${APP_NAMESPACE}"
 }
 
 # ============================================================================
@@ -92,23 +100,23 @@ verify_deployment() {
     echo_header "Verifying Deployment"
 
     echo_info "Pods status:"
-    kubectl get pods -l "app in (postgres,backend,frontend)"
+    kubectl get pods -n "${APP_NAMESPACE}"
 
     echo ""
     echo_info "Services:"
-    kubectl get svc -l "app in (postgres,backend,frontend)"
+    kubectl get svc -n "${APP_NAMESPACE}"
 
     echo ""
     echo_info "IngressRoutes:"
-    kubectl get ingressroute
+    kubectl get ingressroute -n "${APP_NAMESPACE}"
 
     echo ""
     echo_info "Testing endpoints..."
     sleep 3
 
     # Test API
-    echo -n "  API (api.localhost): "
-    API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: api.localhost" http://127.0.0.1 2>/dev/null || echo "000")
+    echo -n "  API (${API_HOSTNAME}): "
+    API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${API_HOSTNAME}" http://127.0.0.1 2>/dev/null || echo "000")
     if [ "$API_STATUS" = "200" ]; then
         echo -e "${GREEN}✓ HTTP ${API_STATUS}${NC}"
     else
@@ -116,12 +124,21 @@ verify_deployment() {
     fi
 
     # Test Frontend
-    echo -n "  Frontend (app.localhost): "
-    APP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: app.localhost" http://127.0.0.1 2>/dev/null || echo "000")
+    echo -n "  Frontend (${APP_HOSTNAME}): "
+    APP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${APP_HOSTNAME}" http://127.0.0.1 2>/dev/null || echo "000")
     if [ "$APP_STATUS" = "200" ]; then
         echo -e "${GREEN}✓ HTTP ${APP_STATUS}${NC}"
     else
         echo -e "${YELLOW}⚠ HTTP ${APP_STATUS}${NC}"
+    fi
+
+    # Test Metrics
+    echo -n "  Metrics (${API_HOSTNAME}/metrics): "
+    METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${API_HOSTNAME}" http://127.0.0.1/metrics 2>/dev/null || echo "000")
+    if [ "$METRICS_STATUS" = "200" ]; then
+        echo -e "${GREEN}✓ HTTP ${METRICS_STATUS}${NC}"
+    else
+        echo -e "${YELLOW}⚠ HTTP ${METRICS_STATUS}${NC}"
     fi
 }
 
@@ -135,6 +152,12 @@ main() {
     echo "  3-Tier Application Build & Deploy"
     echo "============================================================"
     echo ""
+    echo "Configuration:"
+    echo "  Cluster:   ${CLUSTER_NAME}"
+    echo "  Namespace: ${APP_NAMESPACE}"
+    echo "  Backend:   ${BACKEND_FULL_IMAGE}"
+    echo "  Frontend:  ${FRONTEND_FULL_IMAGE}"
+    echo ""
 
     build_images
     import_images
@@ -147,16 +170,17 @@ main() {
     echo "============================================================"
     echo ""
     echo "Access your application:"
-    echo "  • Frontend: http://app.localhost"
-    echo "  • API:      http://api.localhost"
+    echo "  • Frontend: http://${APP_HOSTNAME}"
+    echo "  • API:      http://${API_HOSTNAME}"
+    echo "  • Metrics:  http://${API_HOSTNAME}/metrics"
     echo ""
-    echo "Make sure to add these entries to /etc/hosts:"
-    echo "  127.0.0.1 app.localhost api.localhost"
+    echo "Add to /etc/hosts if needed:"
+    echo "  127.0.0.1 ${APP_HOSTNAME} ${API_HOSTNAME}"
     echo ""
     echo "Useful commands:"
-    echo "  kubectl get pods              # View all pods"
-    echo "  kubectl logs -l app=backend   # View backend logs"
-    echo "  kubectl logs -l app=frontend  # View frontend logs"
+    echo "  kubectl get pods -n ${APP_NAMESPACE}"
+    echo "  kubectl logs -l app=backend -n ${APP_NAMESPACE}"
+    echo "  kubectl logs -l app=frontend -n ${APP_NAMESPACE}"
     echo ""
 }
 
