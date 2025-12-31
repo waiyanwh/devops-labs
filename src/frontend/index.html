@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Lab - 3-Tier App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+            font-size: 1.2rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            margin: 1rem 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .message-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 1.5rem 2rem;
+            border-radius: 15px;
+            margin: 1rem 0;
+            font-size: 1.3rem;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .status-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .status-item:hover {
+            transform: translateY(-5px);
+        }
+
+        .status-label {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .status-value.connected {
+            color: #00ff88;
+        }
+
+        .status-value.disconnected {
+            color: #ff4757;
+        }
+
+        .info {
+            margin-top: 1.5rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        .loading {
+            opacity: 0.7;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 0.4; }
+        }
+
+        .tier-info {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .tier {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        .tier-icon {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .tier-icon.frontend { background: #00d4ff; }
+        .tier-icon.backend { background: #7b2cbf; }
+        .tier-icon.database { background: #00ff88; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 DevOps Lab</h1>
+        <p class="subtitle">3-Tier Kubernetes Application</p>
+
+        <div class="card">
+            <h2>Message from Database</h2>
+            <div id="message" class="message-box loading">Loading...</div>
+            
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-label">API Status</div>
+                    <div id="api-status" class="status-value">Checking...</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Database</div>
+                    <div id="db-status" class="status-value">Checking...</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Version</div>
+                    <div id="version" class="status-value">-</div>
+                </div>
+            </div>
+
+            <button class="refresh-btn" onclick="fetchData()">↻ Refresh</button>
+            
+            <p id="timestamp" class="info"></p>
+        </div>
+
+        <div class="tier-info">
+            <div class="tier">
+                <span class="tier-icon frontend"></span>
+                Frontend (Nginx)
+            </div>
+            <div class="tier">
+                <span class="tier-icon backend"></span>
+                Backend (FastAPI)
+            </div>
+            <div class="tier">
+                <span class="tier-icon database"></span>
+                Database (PostgreSQL)
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.protocol + '//' + window.location.hostname.replace('app', 'api');
+        
+        async function fetchData() {
+            const messageEl = document.getElementById('message');
+            const apiStatusEl = document.getElementById('api-status');
+            const dbStatusEl = document.getElementById('db-status');
+            const versionEl = document.getElementById('version');
+            const timestampEl = document.getElementById('timestamp');
+            
+            messageEl.classList.add('loading');
+            messageEl.textContent = 'Loading...';
+            
+            try {
+                // Fetch message from API
+                const helloRes = await fetch(API_BASE + '/api/hello');
+                const helloData = await helloRes.json();
+                
+                messageEl.textContent = helloData.message || 'No message';
+                messageEl.classList.remove('loading');
+                timestampEl.textContent = 'Last updated: ' + (helloData.timestamp || new Date().toISOString());
+                
+                // Fetch status
+                const statusRes = await fetch(API_BASE + '/api/status');
+                const statusData = await statusRes.json();
+                
+                apiStatusEl.textContent = statusData.api === 'running' ? '✓ Running' : '✗ Down';
+                apiStatusEl.className = 'status-value ' + (statusData.api === 'running' ? 'connected' : 'disconnected');
+                
+                dbStatusEl.textContent = statusData.database === 'connected' ? '✓ Connected' : '✗ Disconnected';
+                dbStatusEl.className = 'status-value ' + (statusData.database === 'connected' ? 'connected' : 'disconnected');
+                
+                versionEl.textContent = statusData.version || '-';
+                
+            } catch (error) {
+                messageEl.textContent = 'Error connecting to API';
+                messageEl.classList.remove('loading');
+                apiStatusEl.textContent = '✗ Error';
+                apiStatusEl.className = 'status-value disconnected';
+                dbStatusEl.textContent = '✗ Unknown';
+                dbStatusEl.className = 'status-value disconnected';
+                console.error('API Error:', error);
+            }
+        }
+        
+        // Initial fetch
+        fetchData();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(fetchData, 30000);
+    </script>
+</body>
+</html>

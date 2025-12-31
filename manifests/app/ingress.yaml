@@ -1,0 +1,32 @@
+---
+# Frontend IngressRoute (app.localhost)
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: frontend
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`app.localhost`)
+      kind: Rule
+      services:
+        - name: frontend
+          port: 80
+---
+# Backend API IngressRoute (api.localhost)
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: backend-api
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`api.localhost`)
+      kind: Rule
+      services:
+        - name: backend
+          port: 80

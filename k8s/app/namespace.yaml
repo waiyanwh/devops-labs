@@ -1,0 +1,8 @@
+---
+# App Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    name: app
