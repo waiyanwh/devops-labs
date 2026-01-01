@@ -35,6 +35,11 @@ build_images() {
     echo_info "Building frontend image (${FRONTEND_FULL_IMAGE})..."
     docker build -t "${FRONTEND_FULL_IMAGE}" "${SCRIPT_DIR}/src/frontend/"
     echo_info "Frontend image built: ${FRONTEND_FULL_IMAGE}"
+
+    # Build Worker
+    echo_info "Building worker image (lab-worker:v1)..."
+    docker build -t "lab-worker:v1" "${SCRIPT_DIR}/src/worker/"
+    echo_info "Worker image built: lab-worker:v1"
 }
 
 # Determine k3d binary
@@ -56,6 +61,10 @@ import_images() {
 
     echo_info "Importing ${FRONTEND_FULL_IMAGE}..."
     ${K3D_BIN} image import "${FRONTEND_FULL_IMAGE}" -c "${CLUSTER_NAME}"
+
+    echo_info "Importing lab-worker:v1..."
+    ${K3D_BIN} image import "lab-worker:v1" -c "${CLUSTER_NAME}"
+
 
     echo_info "Images imported successfully!"
 }
@@ -88,16 +97,29 @@ deploy_app() {
     echo_info "Deploying Frontend..."
     kubectl apply -f "${SCRIPT_DIR}/k8s/app/frontend.yaml"
 
+    echo_info "Deploying Worker..."
+    if [ -f "${SCRIPT_DIR}/k8s/app/worker.yaml" ]; then
+        kubectl apply -f "${SCRIPT_DIR}/k8s/app/worker.yaml"
+    else
+        echo_warn "Worker manifest not found!"
+    fi
+
+
     echo_info "Creating IngressRoutes..."
     kubectl apply -f "${SCRIPT_DIR}/k8s/app/ingress.yaml"
 
     echo_info "Creating ServiceMonitor..."
     kubectl apply -f "${SCRIPT_DIR}/k8s/app/servicemonitor.yaml"
 
+    echo_info "Creating KEDA ScaledObject for Worker..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/app/rabbitmq-scaledobject.yaml"
+
     echo_info "Waiting for all deployments to be ready..."
     kubectl wait --for=condition=available --timeout=120s deployment/backend -n "${APP_NAMESPACE}"
     kubectl wait --for=condition=available --timeout=120s deployment/frontend -n "${APP_NAMESPACE}"
+    # Worker might scale to 0, so don't wait for it if replicas=0
 }
+
 
 # ============================================================================
 # Verify Deployment

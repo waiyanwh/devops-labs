@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-creds
+  namespace: app
+type: Opaque
+stringData:
+  host: "rabbitmq.message-queue.svc"
+  username: "default_user_tgs1d0X40xHqk3myJTq"
+  password: "eiY8cG0Sesoaz0fSlRRuJv89gVXHIX2G"
+  uri: "amqp://default_user_tgs1d0X40xHqk3myJTq:eiY8cG0Sesoaz0fSlRRuJv89gVXHIX2G@rabbitmq.message-queue.svc:5672/"

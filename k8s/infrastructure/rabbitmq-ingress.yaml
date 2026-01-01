@@ -1,0 +1,16 @@
+---
+# RabbitMQ IngressRoute for Traefik
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: rabbitmq-dashboard
+  namespace: message-queue
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`rabbitmq.localhost`)
+      kind: Rule
+      services:
+        - name: rabbitmq
+          port: 15672

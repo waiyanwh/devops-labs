@@ -8,7 +8,7 @@ metadata:
   labels:
     app: backend
 spec:
-  replicas: 2
+
   selector:
     matchLabels:
       app: backend
@@ -50,6 +50,21 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: POSTGRES_PASSWORD
+            - name: RMQ_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-creds
+                  key: host
+            - name: RMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-creds
+                  key: username
+            - name: RMQ_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-creds
+                  key: password
           livenessProbe:
             httpGet:
               path: /health

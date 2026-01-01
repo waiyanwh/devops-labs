@@ -192,3 +192,46 @@ async def add_message(content: str = "New message"):
         db_query_counter.labels(operation="insert", status="error").inc()
         http_requests_counter.labels(method="POST", endpoint="/api/message", status="500").inc()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+import pika
+
+# RabbitMQ Settings
+RMQ_HOST = os.getenv("RMQ_HOST", "rabbitmq.message-queue.svc.cluster.local")
+RMQ_PORT = int(os.getenv("RMQ_PORT", 5672))
+RMQ_USER = os.getenv("RMQ_USER", "user")
+RMQ_PASS = os.getenv("RMQ_PASS", "password")
+RMQ_QUEUE = os.getenv("RMQ_QUEUE", "work_queue")
+
+def get_rmq_connection():
+    credentials = pika.PlainCredentials(RMQ_USER, RMQ_PASS)
+    parameters = pika.ConnectionParameters(host=RMQ_HOST, port=RMQ_PORT, credentials=credentials)
+    return pika.BlockingConnection(parameters)
+
+@app.post("/job")
+async def create_job(job_type: str = "scaling_test"):
+    """Publish a job to RabbitMQ to trigger scaling"""
+    try:
+        connection = get_rmq_connection()
+        channel = connection.channel()
+        
+        # Declare queue (idempotent)
+        channel.queue_declare(queue=RMQ_QUEUE, durable=True)
+        
+        message = f"Job_{int(time.time())}_{job_type}"
+        channel.basic_publish(
+            exchange='',
+            routing_key=RMQ_QUEUE,
+            body=message,
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+            ))
+            
+        connection.close()
+        
+        http_requests_counter.labels(method="POST", endpoint="/job", status="200").inc()
+        return {"status": "queued", "message": message, "queue": RMQ_QUEUE}
+        
+    except Exception as e:
+        http_requests_counter.labels(method="POST", endpoint="/job", status="500").inc()
+        print(f"RabbitMQ Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Queue error: {str(e)}")

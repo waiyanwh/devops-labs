@@ -80,7 +80,7 @@ install_argocd() {
 
     # Apply IngressRoute
     echo_info "Applying ArgoCD IngressRoute..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/argocd-ingress.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/argocd-ingress.yaml"
 
     # Wait for ArgoCD server to be ready
     echo_info "Waiting for ArgoCD server to be ready..."
@@ -139,7 +139,7 @@ install_prometheus_stack() {
 
     # Apply IngressRoute
     echo_info "Applying Grafana IngressRoute..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/grafana-ingress.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/grafana-ingress.yaml"
 
     # Wait for Grafana to be ready
     echo_info "Waiting for Grafana to be ready..."
@@ -183,7 +183,7 @@ install_loki() {
 
     # Apply Datasource
     echo_info "Applying Loki Datasource..."
-    kubectl apply -f "${SCRIPT_DIR}/manifests/logging/datasource.yaml"
+    kubectl apply -f "${SCRIPT_DIR}/k8s/logging/datasource.yaml"
     
     echo_info "Applying Cluster Logs Dashboard..."
     # Apply dashboard to monitoring, hoping sidecar picks it up from there (it should)
@@ -193,6 +193,91 @@ install_loki() {
     # Typically sidecar scans all namespaces or specific ones. 
     # Let's apply it directly to cluster.
     kubectl apply -f "${SCRIPT_DIR}/gitops-root/templates/loki-dashboard.yaml"
+}
+
+# ============================================================================
+# KEDA Installation (Event-Driven Scaling)
+# ============================================================================
+
+install_keda() {
+    echo_header "Installing KEDA"
+
+    # Create namespace
+    kubectl create namespace keda --dry-run=client -o yaml | kubectl apply -f -
+
+    # Add KEDA Helm repo
+    echo_info "Adding KEDA Helm repository..."
+    helm repo add kedacore https://kedacore.github.io/charts 2>/dev/null || true
+    helm repo update
+
+    # Install KEDA
+    echo_info "Installing KEDA via Helm (version ${KEDA_CHART_VERSION})..."
+    helm upgrade --install keda kedacore/keda \
+        --namespace keda \
+        --version "${KEDA_CHART_VERSION}" \
+        --wait --timeout 5m
+
+    echo_info "KEDA installed successfully!"
+}
+
+# ============================================================================
+# RabbitMQ Cluster Operator Installation
+# ============================================================================
+
+install_rabbitmq() {
+    echo_header "Installing RabbitMQ Cluster Operator"
+
+    # Install RabbitMQ Cluster Operator
+    echo_info "Installing RabbitMQ Cluster Operator..."
+    kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"
+
+    # Wait for operator to be ready
+    echo_info "Waiting for RabbitMQ Operator to be ready..."
+    kubectl wait --for=condition=available --timeout=300s deployment/rabbitmq-cluster-operator -n rabbitmq-system
+
+    # Create message-queue namespace
+    kubectl create namespace message-queue --dry-run=client -o yaml | kubectl apply -f -
+
+    # Deploy RabbitMQ cluster
+    echo_info "Deploying RabbitMQ cluster..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/infrastructure/rabbitmq-cluster.yaml"
+
+    # Apply Ingress
+    echo_info "Applying RabbitMQ Ingress..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/infrastructure/rabbitmq-ingress.yaml"
+
+    # Wait for RabbitMQ to be ready
+    echo_info "Waiting for RabbitMQ cluster to be ready..."
+    kubectl wait --for=condition=AllReplicasReady --timeout=300s rabbitmqcluster/rabbitmq -n message-queue
+
+    # Create rabbitmq-creds secret in app namespace
+    echo_info "Creating rabbitmq-creds in 'app' namespace..."
+    kubectl create namespace app --dry-run=client -o yaml | kubectl apply -f -
+
+    # Get credentials from RabbitMQ default user secret
+    RMQ_USER=$(kubectl get secret rabbitmq-default-user -n message-queue -o jsonpath='{.data.username}' | base64 -d)
+    RMQ_PASS=$(kubectl get secret rabbitmq-default-user -n message-queue -o jsonpath='{.data.password}' | base64 -d)
+    RMQ_HOST="rabbitmq.message-queue.svc"
+    RMQ_URI="amqp://${RMQ_USER}:${RMQ_PASS}@${RMQ_HOST}:5672/"
+
+    kubectl create secret generic rabbitmq-creds \
+        --namespace app \
+        --from-literal=host="${RMQ_HOST}" \
+        --from-literal=username="${RMQ_USER}" \
+        --from-literal=password="${RMQ_PASS}" \
+        --from-literal=uri="${RMQ_URI}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    echo_info "RabbitMQ installed successfully!"
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║              RabbitMQ Credentials                          ║${NC}"
+    echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${GREEN}║${NC}  URL:      http://rabbitmq.localhost                        ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Username: ${RMQ_USER}   ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Password: ${RMQ_PASS}   ${GREEN}║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 # ============================================================================
@@ -256,6 +341,8 @@ main() {
     install_argocd
     install_prometheus_stack
     install_loki
+    install_keda
+    install_rabbitmq
     verify_installation
 
     echo ""
@@ -268,7 +355,7 @@ main() {
     echo "  • Grafana: http://${GRAFANA_HOSTNAME}  (${GRAFANA_ADMIN_USER} / ${GRAFANA_ADMIN_PASSWORD})"
     echo ""
     echo "Add to /etc/hosts if needed:"
-    echo "  127.0.0.1 ${ARGOCD_HOSTNAME} ${GRAFANA_HOSTNAME}"
+    echo "  127.0.0.1 ${ARGOCD_HOSTNAME} ${GRAFANA_HOSTNAME} rabbitmq.localhost"
     echo ""
 }
 

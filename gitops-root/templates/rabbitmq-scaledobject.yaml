@@ -1,0 +1,31 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-auth
+  namespace: app
+spec:
+  secretTargetRef:
+  - parameter: host
+    name: rabbitmq-creds
+    key: uri
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-scaler
+  namespace: app
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 5
+  cooldownPeriod: 30
+  triggers:
+  - type: rabbitmq
+    metadata:
+      queueName: work_queue
+      mode: QueueLength
+      value: "5"
+    authenticationRef:
+      name: rabbitmq-auth
