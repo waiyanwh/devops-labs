@@ -95,8 +95,6 @@ devops-labs/
 - kubectl
 - Helm 3
 
-## Cleanup
-
 ## Testing
 
 This project includes scripts for resilience and compatibility testing:
