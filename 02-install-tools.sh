@@ -157,6 +157,45 @@ install_prometheus_stack() {
 }
 
 # ============================================================================
+# Loki Stack Installation (Logging)
+# ============================================================================
+
+install_loki() {
+    echo_header "Installing Loki Stack (Logging)"
+
+    # Add Grafana repo
+    echo_info "Adding Grafana Helm repository..."
+    helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
+    helm repo update
+
+    # Install Loki Stack
+    echo_info "Installing Loki Stack via Helm (version ${LOKI_STACK_VERSION})..."
+    helm upgrade --install loki grafana/loki-stack \
+        --namespace "${MONITORING_NAMESPACE}" \
+        --version "${LOKI_STACK_VERSION}" \
+        --set grafana.enabled=false \
+        --set prometheus.enabled=false \
+        --set promtail.enabled=true \
+        --set loki.isDefault=false \
+        --wait --timeout 10m
+
+    echo_info "Loki Stack installed successfully!"
+
+    # Apply Datasource
+    echo_info "Applying Loki Datasource..."
+    kubectl apply -f "${SCRIPT_DIR}/manifests/logging/datasource.yaml"
+    
+    echo_info "Applying Cluster Logs Dashboard..."
+    # Apply dashboard to monitoring, hoping sidecar picks it up from there (it should)
+    # The artifact was created in gitops-root/templates/loki-dashboard.yaml (which syncs to app)
+    # But for manual tool install, let's also apply it here.
+    # Note: earlier I made gitops-root/templates/loki-dashboard.yaml which defines it in 'app' namespace.
+    # Typically sidecar scans all namespaces or specific ones. 
+    # Let's apply it directly to cluster.
+    kubectl apply -f "${SCRIPT_DIR}/gitops-root/templates/loki-dashboard.yaml"
+}
+
+# ============================================================================
 # Verification
 # ============================================================================
 
@@ -216,6 +255,7 @@ main() {
     check_prerequisites
     install_argocd
     install_prometheus_stack
+    install_loki
     verify_installation
 
     echo ""

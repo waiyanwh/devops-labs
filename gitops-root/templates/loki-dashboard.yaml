@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-logs-dashboard
+  namespace: app  # ArgoCD syncs to 'app', but Grafana sidecar should find it if configured
+  labels:
+    grafana_dashboard: "1"
+data:
+  cluster-logs.json: |-
+    {
+      "title": "Cluster Logs (Loki)",
+      "uid": "cluster-logs",
+      "tags": ["loki", "logs", "app"],
+      "timezone": "browser",
+      "schemaVersion": 30,
+      "refresh": "5s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Error Logs (Last 1h)",
+          "type": "stat",
+          "datasource": { "type": "loki", "uid": "Loki" },
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(count_over_time({namespace=\"app\"} |= \"error\" [1h]))",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+          }
+        },
+        {
+          "id": 2,
+          "title": "App Logs Stream",
+          "type": "logs",
+          "datasource": { "type": "loki", "uid": "Loki" },
+          "gridPos": { "h": 18, "w": 24, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "{namespace=\"app\"}",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true
+          }
+        }
+      ]
+    }
