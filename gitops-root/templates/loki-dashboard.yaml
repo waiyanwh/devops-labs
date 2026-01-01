@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cluster-logs-dashboard
-  namespace: app  # ArgoCD syncs to 'app', but Grafana sidecar should find it if configured
+  namespace: monitoring
   labels:
     grafana_dashboard: "1"
 data:
