@@ -1,0 +1,51 @@
+# Jenkins Helm Chart Values
+# Based on official docs: https://www.jenkins.io/doc/book/installing/kubernetes/
+# Uses Kaniko for building images (no Docker socket needed)
+
+controller:
+  # Service configuration - ClusterIP for internal access via Ingress
+  serviceType: ClusterIP
+  servicePort: 8080
+  
+  # Install useful plugins
+  installPlugins:
+    - kubernetes:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - configuration-as-code:latest
+  
+  # Resource limits
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+  # Jenkins Configuration as Code
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Welcome to Jenkins on Kubernetes! CI/CD for DevOps Lab (using Kaniko)"
+
+# Agent pod configuration (no Docker socket needed - using Kaniko)
+agent:
+  enabled: true
+
+# Persistence for Jenkins home
+persistence:
+  enabled: true
+  size: "8Gi"
+
+# Service Account configuration
+serviceAccount:
+  create: true
+  name: jenkins
+
+# RBAC configuration
+rbac:
+  create: true
+  readSecrets: true

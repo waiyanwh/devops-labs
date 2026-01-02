@@ -1,0 +1,16 @@
+---
+# Jenkins IngressRoute for Traefik (HTTP only for lab environment)
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: jenkins
+  namespace: ci
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`jenkins.localhost`)
+      kind: Rule
+      services:
+        - name: jenkins
+          port: 8080

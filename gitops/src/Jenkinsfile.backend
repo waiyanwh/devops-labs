@@ -1,0 +1,96 @@
+// CI/CD Pipeline for DevOps Lab Backend
+// Uses Kaniko for building images (works in k3d without Docker socket)
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins-build: kaniko
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    command:
+    - sleep
+    args:
+    - infinity
+    tty: true
+    volumeMounts:
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+  volumes:
+  - name: kaniko-secret
+    emptyDir: {}
+'''
+        }
+    }
+    
+    environment {
+        REGISTRY = 'registry.ci.svc.cluster.local:5000'
+        IMAGE_NAME = 'lab-backend'
+        IMAGE_TAG = "v${BUILD_NUMBER}"
+        FULL_IMAGE = "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Checking out source code..."
+                checkout scm
+            }
+        }
+        
+        stage('Build & Push') {
+            steps {
+                container('kaniko') {
+                    echo "Building and pushing image with Kaniko: ${FULL_IMAGE}"
+                    sh '''
+                        /kaniko/executor \
+                            --context=dir://./src/backend \
+                            --dockerfile=./src/backend/Dockerfile \
+                            --destination=${FULL_IMAGE} \
+                            --destination=${REGISTRY}/${IMAGE_NAME}:latest \
+                            --insecure \
+                            --skip-tls-verify
+                    '''
+                }
+            }
+        }
+        
+        stage('Show Deploy Command') {
+            steps {
+                echo """
+============================================
+Build Complete!
+============================================
+Image: ${FULL_IMAGE}
+
+To deploy this image, update your backend.yaml:
+
+  image: ${FULL_IMAGE}
+  imagePullPolicy: Always
+
+Or run:
+  kubectl set image deployment/backend backend=${FULL_IMAGE} -n app
+
+============================================
+"""
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Pipeline completed successfully! Image pushed to registry."
+        }
+        failure {
+            echo "Pipeline failed! Check the logs above for details."
+        }
+    }
+}
