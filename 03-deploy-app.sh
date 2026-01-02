@@ -1,10 +1,12 @@
 #!/bin/bash
 
 # ============================================================================
-# 3-Tier Application Build and Deploy Script
+# 3-Tier Application Deploy Script (Challenge Lab - Phase 1)
 # ============================================================================
-# Builds Docker images, imports them into k3d, and deploys to Kubernetes.
-# All settings are loaded from config.env
+# Deploys the base application WITHOUT the advanced integrations.
+# After running this, you'll have a working app but need to complete quests:
+#   - Quest 3: Add ServiceMonitor for Prometheus
+#   - Quest 4: Add KEDA ScaledObject for autoscaling
 # ============================================================================
 
 set -e
@@ -108,11 +110,12 @@ deploy_app() {
     echo_info "Creating IngressRoutes..."
     kubectl apply -f "${SCRIPT_DIR}/k8s/app/ingress.yaml"
 
-    echo_info "Creating ServiceMonitor..."
-    kubectl apply -f "${SCRIPT_DIR}/k8s/app/servicemonitor.yaml"
-
-    echo_info "Creating KEDA ScaledObject for Worker..."
-    kubectl apply -f "${SCRIPT_DIR}/k8s/app/rabbitmq-scaledobject.yaml"
+    # NOTE: ServiceMonitor and ScaledObject are NOT applied here!
+    # These are part of the learning quests - see README.md
+    # Quest 3: Create ServiceMonitor for Prometheus
+    # Quest 4: Create KEDA ScaledObject for autoscaling
+    echo_warn "ServiceMonitor not applied - this is Quest 3!"
+    echo_warn "KEDA ScaledObject not applied - this is Quest 4!"
 
     echo_info "Waiting for all deployments to be ready..."
     kubectl wait --for=condition=available --timeout=120s deployment/backend -n "${APP_NAMESPACE}"

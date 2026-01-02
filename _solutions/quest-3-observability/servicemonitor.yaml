@@ -1,0 +1,28 @@
+---
+# ServiceMonitor for Backend API
+# This will be detected by Prometheus Operator in the monitoring namespace
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend-monitor
+  namespace: app
+  labels:
+    # Label that Prometheus Operator uses to discover ServiceMonitors
+    release: kube-prometheus-stack
+    app: backend
+spec:
+  # Match services with these labels
+  selector:
+    matchLabels:
+      app: backend
+      prometheus-scrape: "true"
+  # Look for services in the app namespace
+  namespaceSelector:
+    matchNames:
+      - app
+  # Define how to scrape the endpoints
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

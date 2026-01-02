@@ -1,0 +1,45 @@
+---
+# ArgoCD Application Manifest
+# This deploys the 3-tier DevOps Lab application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: devops-lab-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Source repository configuration
+  # TODO: Update repoURL to your GitHub repository after pushing
+  source:
+    # Replace with your actual GitHub repository URL
+    repoURL: https://github.com/YOUR_USERNAME/devops-labs.git
+    targetRevision: HEAD
+    path: gitops-root/templates
+    
+  # Destination cluster and namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  
+  # Sync policy configuration
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Health checks and resource ignores
+  ignoreDifferences: []

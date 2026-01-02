@@ -1,6 +1,6 @@
-# DevOps Lab - Local Kubernetes Learning Environment
+# 🚀 DevOps Lab: The Architect's Journey
 
-A complete local DevOps lab featuring k3d, ArgoCD, Prometheus, Grafana, Jenkins, and a 3-tier demo application with full observability.
+A hands-on DevOps learning lab where **you** configure the integrations. No hand-holding—just a working cluster and challenges to solve.
 
 ## ⚠️ Resource Requirements
 
@@ -12,254 +12,6 @@ A complete local DevOps lab featuring k3d, ArgoCD, Prometheus, Grafana, Jenkins,
 | **CPU** | 4 cores | 8 cores |
 | **Disk** | 20 GB | 40 GB |
 
-**What's running:**
-- k3d cluster (1 server + 3 agents)
-- ArgoCD, Prometheus, Grafana, Loki
-- KEDA, RabbitMQ
-- Jenkins + Docker Registry
-- Demo application (frontend, backend, worker, postgres)
-
-## Quick Start
-
-1. **Configure your environment:**
-   ```bash
-   # Edit config.env with your settings (GitHub URL, passwords, etc.)
-   vim config.env
-   ```
-
-2. **Create the cluster:**
-   ```bash
-   ./01-setup-cluster.sh
-   ```
-
-3. **Install GitOps & Monitoring tools:**
-   ```bash
-   ./02-install-tools.sh
-   ```
-
-4. **Deploy the demo application:**
-   
-   **Option A: Manual Deployment (Script)**
-   Good for local development loop.
-   ```bash
-   ./03-deploy-app.sh
-   ```
-
-   **Option B: GitOps Deployment (ArgoCD)**
-   Good for testing the full CD pipeline.
-   1. Ensure code is pushed to your Git repo.
-   2. Edit `config.env` and set `GIT_REPO_URL` to your repo.
-   3. Apply the Application manifest:
-      ```bash
-      # First, build and import images (if not done)
-      ./03-deploy-app.sh --build-only  # You might need to edit script to support this or just let it run
-      
-      # Apply ArgoCD Application
-      kubectl apply -f gitops-root/application.yaml
-      ```
-   4. Sync via ArgoCD UI at http://argocd.localhost
-
-5. **Add hostnames to /etc/hosts:**
-   ```bash
-   echo "127.0.0.1 app.localhost api.localhost argocd.localhost grafana.localhost rabbitmq.localhost jenkins.localhost" | sudo tee -a /etc/hosts
-   ```
-
-## Configuration
-
-All configurable values are in `config.env`. Key settings:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CLUSTER_NAME` | k3d cluster name | `devops-lab` |
-| `SERVER_COUNT` | Master nodes | `1` |
-| `AGENT_COUNT` | Worker nodes | `3` |
-| `GIT_REPO_URL` | Your GitHub repo for GitOps | `https://github.com/YOUR_USERNAME/devops-labs.git` |
-| `DB_PASSWORD` | PostgreSQL password | `apppassword` |
-| `GRAFANA_ADMIN_PASSWORD` | Grafana password | `admin` |
-
-## Service URLs
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Frontend | http://app.localhost | - |
-| Backend API | http://api.localhost | - |
-| ArgoCD | http://argocd.localhost | `admin` / (auto-generated) |
-| Grafana | http://grafana.localhost | `admin` / `admin` |
-| RabbitMQ | http://rabbitmq.localhost | (auto-generated, see install output) |
-| Jenkins | http://jenkins.localhost | `admin` / (auto-generated) |
-
-## Project Structure
-
-```
-devops-labs/
-├── config.env              # ⚙️  Configuration file (edit this!)
-├── 01-setup-cluster.sh     # Creates k3d cluster
-├── 02-install-tools.sh     # Installs ArgoCD, Prometheus, KEDA, RabbitMQ, Jenkins
-├── 03-deploy-app.sh        # Builds and deploys the app (manual path)
-├── 04-chaos-test.sh        # 🐒 Chaos Monkey resilience tests
-├── 05-k8s-compat-test.sh   # 🔄 K8s version compatibility matrix
-├── spam_jobs.sh            # 📈 Load generator for KEDA scaling demo
-├── src/
-│   ├── backend/            # FastAPI + Prometheus + RabbitMQ producer
-│   ├── frontend/           # Nginx + HTML/JS
-│   └── worker/             # RabbitMQ consumer (KEDA scaled)
-├── k8s/                    # 📦 All Kubernetes manifests
-│   ├── app/                # Application (used by 03-deploy-app.sh)
-│   ├── ci/                 # 🔧 CI/CD (Registry, Jenkins)
-│   ├── infrastructure/     # RabbitMQ cluster
-│   ├── logging/            # Loki datasource
-│   ├── argocd-ingress.yaml
-│   └── grafana-ingress.yaml
-├── gitops/
-│   └── src/
-│       ├── Jenkinsfile.backend   # 🚀 Backend pipeline
-│       ├── Jenkinsfile.frontend  # 🚀 Frontend pipeline
-│       └── Jenkinsfile.worker    # 🚀 Worker pipeline
-└── gitops-root/            # 🔄 ArgoCD GitOps
-    ├── application.yaml    # ArgoCD Application CR
-    └── templates/          # Synced by ArgoCD
-```
-
-**Two deployment paths:**
-- **Manual**: `./03-deploy-app.sh` → deploys from `k8s/app/`
-- **ArgoCD**: `kubectl apply -f gitops-root/application.yaml` → syncs from `gitops-root/templates/`
-
-## CI/CD with Jenkins
-
-This lab includes a complete CI/CD pipeline using **Jenkins** and a **local Docker Registry**.
-
-### What Gets Installed
-
-| Component | Purpose |
-|-----------|---------|
-| **Docker Registry** | Stores built container images (`registry.ci.svc.cluster.local:5000`) |
-| **Jenkins** | CI/CD automation server with Kubernetes plugin |
-| **Jenkinsfiles** | Pipeline definitions for each component |
-
-### Available Pipelines
-
-| Component | Jenkinsfile Path | Image Name |
-|-----------|------------------|------------|
-| **Backend** | `gitops/src/Jenkinsfile.backend` | `lab-backend` |
-| **Frontend** | `gitops/src/Jenkinsfile.frontend` | `lab-frontend` |
-| **Worker** | `gitops/src/Jenkinsfile.worker` | `lab-worker` |
-
-### Getting Jenkins Admin Password
-
-After installation, get the admin password with:
-
-```bash
-kubectl exec --namespace ci -it svc/jenkins -c jenkins -- \
-  /bin/cat /run/secrets/additional/chart-admin-password
-```
-
-### Setting Up Your First Pipeline Job
-
-> **Tip for Beginners**: This is where many people get confused. Follow these steps carefully!
-
-#### Step 1: Access Jenkins
-
-1. Open your browser and go to: **http://jenkins.localhost**
-2. Login with:
-   - **Username**: `admin`
-   - **Password**: (from the command above)
-
-#### Step 2: Create Pipeline Jobs
-
-Create a job for each component (backend, frontend, worker):
-
-1. Click **"New Item"** on the left sidebar
-2. Enter a name (e.g., `devops-lab-backend`)
-3. Select **"Pipeline"** as the job type
-4. Click **OK**
-
-#### Step 3: Configure the Pipeline
-
-In the job configuration page:
-
-1. Scroll down to the **"Pipeline"** section
-2. Change **"Definition"** to: `Pipeline script from SCM`
-3. Set **"SCM"** to: `Git`
-4. Enter your **Repository URL** (e.g., `https://github.com/YOUR_USERNAME/devops-labs.git`)
-5. Set **"Script Path"** based on component:
-   - Backend: `gitops/src/Jenkinsfile.backend`
-   - Frontend: `gitops/src/Jenkinsfile.frontend`
-   - Worker: `gitops/src/Jenkinsfile.worker`
-6. Click **Save**
-
-Repeat for each component you want to build.
-
-#### Step 4: Add Git Credentials (Optional - for pushing changes back)
-
-If your pipeline needs to push changes back to Git:
-
-1. Go to **Manage Jenkins** → **Credentials** → **System** → **Global credentials**
-2. Click **"Add Credentials"**
-3. Kind: `Username with password`
-4. Username: Your GitHub username
-5. Password: Your GitHub Personal Access Token (not your password!)
-6. ID: `git-credentials`
-7. Click **Create**
-
-#### Step 5: Run the Pipeline
-
-1. Go back to your pipeline job
-2. Click **"Build Now"** on the left sidebar
-3. Click on the build number to see progress
-4. Click **"Console Output"** to see detailed logs
-
-### Pipeline Stages Explained
-
-The Jenkinsfile uses **Kaniko** to build images (works inside k3d without Docker socket):
-
-```
-┌──────────┐    ┌──────────────┐    ┌─────────────────────┐
-│ Checkout │ →  │ Build & Push │ →  │ Show Deploy Command │
-└──────────┘    └──────────────┘    └─────────────────────┘
-```
-
-| Stage | What It Does |
-|-------|--------------|
-| **Checkout** | Clones your Git repository |
-| **Build & Push** | Uses Kaniko to build and push image to internal registry |
-| **Show Deploy Command** | Displays the kubectl command to deploy the new image |
-
-> **Why Kaniko?** Since k3d runs Kubernetes inside Docker, the Docker socket (`/var/run/docker.sock`) isn't available inside the pods. Kaniko builds container images without needing a Docker daemon!
-
-### Troubleshooting Jenkins
-
-**Can't access Jenkins?**
-```bash
-# Check if Jenkins pod is running
-kubectl get pods -n ci
-
-# Check Jenkins logs
-kubectl logs -n ci -l app.kubernetes.io/component=jenkins-controller
-
-# Verify the IngressRoute
-kubectl get ingressroute -n ci
-```
-
-**Pipeline fails at Kaniko build?**
-```bash
-# Check the build pod logs
-kubectl logs -n ci -l jenkins-build=kaniko --all-containers
-
-# Verify Kaniko can reach the registry
-kubectl run test-registry --rm -it --image=curlimages/curl --restart=Never -- \
-  curl -s http://registry.ci.svc.cluster.local:5000/v2/
-```
-
-**Registry not accessible?**
-```bash
-# Check registry pod
-kubectl get pods -n ci -l app=registry
-
-# Test registry API
-kubectl run test-registry --rm -it --image=curlimages/curl --restart=Never -- \
-  curl -s http://registry.ci.svc.cluster.local:5000/v2/_catalog
-```
-
 ## Prerequisites
 
 - Docker
@@ -267,100 +19,324 @@ kubectl run test-registry --rm -it --image=curlimages/curl --restart=Never -- \
 - kubectl
 - Helm 3
 
-## Event-Driven Autoscaling with KEDA
+---
 
-This lab demonstrates **queue-based autoscaling** using [KEDA](https://keda.sh) and RabbitMQ.
+## 📦 Phase 1: The Base (Automated)
 
-### Architecture
-
-```mermaid
-flowchart LR
-    subgraph Client
-        A[📱 User/Script]
-    end
-    
-    subgraph Kubernetes Cluster
-        subgraph app namespace
-            B[🔧 Backend API]
-            D[👷 Worker Pods]
-        end
-        
-        subgraph message-queue namespace
-            C[(🐰 RabbitMQ)]
-        end
-        
-        subgraph keda namespace
-            E[📊 KEDA Operator]
-        end
-    end
-    
-    A -->|POST /job| B
-    B -->|publish| C
-    C -->|consume| D
-    E -->|monitors queue| C
-    E -->|scales| D
-```
-
-### How It Works
-
-1. **Backend** exposes `POST /job` endpoint that publishes messages to RabbitMQ `work_queue`
-2. **KEDA** monitors the queue length every 5 seconds
-3. **ScaledObject** triggers scaling: 1 worker per 5 messages (max 10 workers)
-4. **Worker** consumes messages with 2-second processing delay, then ACKs
-5. After queue drains, workers scale back to 0 (30s cooldown)
-
-### Scaling Configuration
-
-| Setting | Value | Description |
-|---------|-------|-------------|
-| `minReplicaCount` | 0 | Scale to zero when idle |
-| `maxReplicaCount` | 10 | Maximum worker pods |
-| `pollingInterval` | 5s | Queue check frequency |
-| `cooldownPeriod` | 30s | Wait before scaling down |
-| `value` | 5 | Messages per worker |
-
-### Demo: Watch Workers Scale
+Run these scripts to get a working cluster with tools installed (but **not configured**):
 
 ```bash
-# Terminal 1: Watch pods
-kubectl get pods -n app -w
+# 1. Configure your environment
+vim config.env
 
-# Terminal 2: Generate load (500 jobs)
-./spam_jobs.sh
+# 2. Create the k3d cluster with Traefik
+./01-setup-cluster.sh
 
-# Browser: RabbitMQ dashboard
-open http://rabbitmq.localhost
+# 3. Install tools (ArgoCD, Prometheus, Jenkins, etc.)
+./02-install-tools.sh
+
+# 4. Deploy the demo app (manually, not via GitOps)
+./03-deploy-app.sh
+
+# 5. Add hostnames to /etc/hosts
+echo "127.0.0.1 app.localhost api.localhost argocd.localhost grafana.localhost rabbitmq.localhost jenkins.localhost" | sudo tee -a /etc/hosts
 ```
 
-**Expected behavior:**
-1. Queue spikes to ~500 messages
-2. Workers scale from 0 → up to 10 pods
-3. Queue drains as workers process (2s each)
-4. Workers scale back to 0 after cooldown
+### ✅ Verification
 
+After Phase 1, you should have:
 
-## Testing
-
-This project includes scripts for resilience and compatibility testing:
-
-### Chaos Monkey
-Run reliability tests (Pod deletion, DB outage, etc.):
 ```bash
-./04-chaos-test.sh
+# Working app
+curl http://app.localhost         # Frontend
+curl http://api.localhost/health  # Backend API
+
+# Tools running but unconfigured
+kubectl get pods -n argocd        # ArgoCD running
+kubectl get pods -n ci            # Jenkins + Registry running
+kubectl get pods -n monitoring    # Prometheus + Grafana running
+
+# But NO integrations configured yet:
+kubectl get application -n argocd  # Empty - YOU will configure this
+kubectl get servicemonitor -n app  # Empty - YOU will create this
 ```
 
-### K8s Compatibility
-Test the stack against different Kubernetes versions (v1.22 - v1.35):
+---
+
+## 🛠️ Your Mission (The Challenges)
+
+*You are the Lead DevOps Engineer. The intern deployed this cluster manually. Your job is to professionalize it.*
+
+Each quest builds on the previous one. Complete them in order.
+
+---
+
+### 🎯 Quest 1: The GitOps Migration
+
+**Current State:** Apps are deployed via `kubectl apply`. Changes require manual intervention.
+
+**Objective:** Configure ArgoCD to manage the 3-tier application using GitOps.
+
+**Success Criteria:**
+- [ ] ArgoCD Application syncs the app from Git
+- [ ] You delete the backend Deployment manually → ArgoCD auto-heals it within 30s
+- [ ] You can see the app status in ArgoCD UI (http://argocd.localhost)
+
+**Hints (progressive):**
+<details>
+<summary>Hint 1: Where to start</summary>
+
+Look at the `gitops-root/` folder. There's a `templates/` directory with manifests...
+</details>
+
+<details>
+<summary>Hint 2: The manifest structure</summary>
+
+You need to create an ArgoCD `Application` resource that points to your Git repo and the `gitops-root/templates/` path.
+</details>
+
+<details>
+<summary>Hint 3: Key fields</summary>
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ???
+  namespace: argocd
+spec:
+  source:
+    repoURL: ???
+    path: ???
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
+</details>
+
+---
+
+### 🎯 Quest 2: The Supply Chain
+
+**Current State:** Images are built locally and imported via `k3d image import`. No CI/CD.
+
+**Objective:** Configure Jenkins to build Docker images and push them to the internal Registry.
+
+**Success Criteria:**
+- [ ] A Jenkins Pipeline builds `lab-backend` from `src/backend/Dockerfile`
+- [ ] Image is pushed to `registry.ci.svc.cluster.local:5000/lab-backend:v1`
+- [ ] You can pull the image from inside the cluster
+
+**Hints (progressive):**
+<details>
+<summary>Hint 1: Access Jenkins</summary>
+
+Jenkins is at http://jenkins.localhost. Get the password:
 ```bash
-# Test specific version
-./05-k8s-compat-test.sh 1.35
-
-# Test all supported versions
-./05-k8s-compat-test.sh all
+kubectl exec --namespace ci -it svc/jenkins -c jenkins -- \
+  /bin/cat /run/secrets/additional/chart-admin-password
 ```
-> **Note:** K8s 1.35+ requires `k3d` v5.7.4+. The setup script tries to detect/download it automatically.
+</details>
 
-## Cleanup
+<details>
+<summary>Hint 2: Pipeline setup</summary>
+
+Create a Pipeline job → "Pipeline script from SCM" → Point to your Git repo.
+You need a `Jenkinsfile` that uses Kaniko (Docker socket isn't available in k3d).
+</details>
+
+<details>
+<summary>Hint 3: Kaniko executor</summary>
+
+```groovy
+agent {
+    kubernetes {
+        yaml '''
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    ...
+'''
+    }
+}
+```
+Kaniko needs `--insecure` flag for the internal registry.
+</details>
+
+---
+
+### 🎯 Quest 3: Observability
+
+**Current State:** Prometheus is running, but it doesn't scrape the backend metrics.
+
+**Objective:** Create a ServiceMonitor so Prometheus discovers the backend's `/metrics` endpoint.
+
+**Success Criteria:**
+- [ ] Prometheus Targets page shows `backend` as a target
+- [ ] You can query `http_requests_total` in Prometheus/Grafana
+- [ ] The pre-built Grafana dashboard shows metrics
+
+**Hints (progressive):**
+<details>
+<summary>Hint 1: Check the backend</summary>
+
+The backend exposes metrics at `:8000/metrics`. Try:
+```bash
+kubectl port-forward svc/backend -n app 8000:80
+curl http://localhost:8000/metrics
+```
+</details>
+
+<details>
+<summary>Hint 2: ServiceMonitor structure</summary>
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ???
+  namespace: ???
+  labels:
+    ???  # Prometheus looks for specific labels
+spec:
+  selector:
+    matchLabels:
+      ???  # Must match Service labels
+  endpoints:
+  - port: ???
+    path: /metrics
+```
+</details>
+
+<details>
+<summary>Hint 3: Label matching</summary>
+
+Check the backend Service labels with:
+```bash
+kubectl get svc backend -n app --show-labels
+```
+Prometheus is configured to scrape ServiceMonitors with certain labels. Check the Prometheus Helm values.
+</details>
+
+---
+
+### 🎯 Quest 4: Event-Driven Scaling
+
+**Current State:** The worker runs with fixed replicas. Queue buildup = slow processing.
+
+**Objective:** Configure KEDA to scale workers based on RabbitMQ queue length.
+
+**Success Criteria:**
+- [ ] Workers scale from 0 when queue has messages
+- [ ] Running `./spam_jobs.sh` causes workers to scale up
+- [ ] Workers scale back to 0 after queue drains
+
+**Hints (progressive):**
+<details>
+<summary>Hint 1: KEDA basics</summary>
+
+KEDA uses a `ScaledObject` to define scaling rules. You need:
+- A trigger (RabbitMQ queue length)
+- Min/max replicas
+- Scaling metadata (queue name, threshold)
+</details>
+
+<details>
+<summary>Hint 2: RabbitMQ connection</summary>
+
+The RabbitMQ connection string is in a secret:
+```bash
+kubectl get secret rabbitmq-creds -n app -o yaml
+```
+You'll need `host` for the ScaledObject.
+</details>
+
+<details>
+<summary>Hint 3: ScaledObject structure</summary>
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ???
+spec:
+  scaleTargetRef:
+    name: worker  # Deployment name
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  triggers:
+  - type: rabbitmq
+    metadata:
+      queueName: work_queue
+      hostFromEnv: ???
+```
+</details>
+
+---
+
+## 📁 Solutions
+
+Stuck? Solutions are available in the `_solutions/` folder.
+
+> ⚠️ **Try first!** The learning happens when you struggle. Only peek at solutions after genuine effort.
+
+```
+_solutions/
+├── quest-1-gitops/          # ArgoCD Application
+├── quest-2-cicd/            # Jenkinsfiles
+├── quest-3-observability/   # ServiceMonitor
+└── quest-4-keda/            # ScaledObject
+```
+
+---
+
+## 🏆 Victory Lap
+
+When all quests are complete, you'll have:
+
+- ✅ **GitOps**: App changes deploy automatically via ArgoCD
+- ✅ **CI/CD**: Code pushes trigger Jenkins builds → Registry → Deploy
+- ✅ **Observability**: Full metrics pipeline from app → Prometheus → Grafana
+- ✅ **Event-Driven Scaling**: Workers scale based on actual load
+
+**Congratulations, DevOps Architect!** 🎉
+
+---
+
+## 📚 Reference
+
+### Service URLs
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Frontend | http://app.localhost | Demo app |
+| Backend API | http://api.localhost | Health: `/health`, Metrics: `/metrics` |
+| ArgoCD | http://argocd.localhost | See Pod for password |
+| Grafana | http://grafana.localhost | admin/admin |
+| Jenkins | http://jenkins.localhost | See Quest 2 for password |
+| RabbitMQ | http://rabbitmq.localhost | See Secret for credentials |
+
+### Project Structure
+
+```
+devops-labs/
+├── 01-setup-cluster.sh      # Creates k3d cluster
+├── 02-install-tools.sh      # Installs (unconfigured) tools
+├── 03-deploy-app.sh         # Deploys app manually
+├── config.env               # Configuration
+├── src/                     # Application source code
+├── k8s/                     # Kubernetes manifests
+├── gitops-root/templates/   # GitOps manifests (for Quest 1)
+├── gitops/src/              # Where your Jenkinsfiles go (Quest 2)
+└── _solutions/              # 👀 Spoilers!
+```
+
+### Cleanup
 
 ```bash
 k3d cluster delete devops-lab

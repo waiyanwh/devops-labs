@@ -1,10 +1,15 @@
 #!/bin/bash
 
 # ============================================================================
-# GitOps and Observability Stack Installation Script
+# DevOps Tools Installation Script (Challenge Lab)
 # ============================================================================
-# Installs ArgoCD and Kube-Prometheus-Stack with configurable options.
-# All settings are loaded from config.env
+# Installs tools but leaves integrations UNCONFIGURED for learning challenges:
+#   - ArgoCD: Running, but no Applications configured (Quest 1)
+#   - Jenkins: Running, but no Pipelines configured (Quest 2)
+#   - Prometheus: Running, but no ServiceMonitors for app (Quest 3)
+#   - KEDA: Running, but no ScaledObjects configured (Quest 4)
+# 
+# See README.md for the challenge quests!
 # ============================================================================
 
 set -e
