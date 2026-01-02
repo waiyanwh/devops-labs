@@ -1,0 +1,59 @@
+# Jenkins Helm Chart Values
+# Based on official docs: https://www.jenkins.io/doc/book/installing/kubernetes/
+
+controller:
+  # Service configuration - ClusterIP for internal access via Ingress
+  serviceType: ClusterIP
+  servicePort: 8080
+  
+  # Install useful plugins
+  installPlugins:
+    - kubernetes:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - docker-workflow:latest
+    - configuration-as-code:latest
+  
+  # Resource limits
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+  # Jenkins Configuration as Code
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Welcome to Jenkins on Kubernetes! CI/CD for DevOps Lab"
+
+# Agent pod configuration
+agent:
+  enabled: true
+  # Mount Docker socket for docker builds
+  volumes:
+    - type: HostPath
+      hostPath: /var/run/docker.sock
+      mountPath: /var/run/docker.sock
+  # Run as root to access Docker socket
+  runAsUser: 0
+  runAsGroup: 0
+
+# Persistence for Jenkins home
+persistence:
+  enabled: true
+  size: "8Gi"
+
+# Service Account configuration
+serviceAccount:
+  create: true
+  name: jenkins
+
+# RBAC configuration
+rbac:
+  create: true
+  readSecrets: true

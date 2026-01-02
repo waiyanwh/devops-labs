@@ -1,0 +1,158 @@
+// CI/CD Pipeline for DevOps Lab Backend
+// Builds, pushes to internal registry, and updates GitOps repo
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins-build: docker
+spec:
+  containers:
+  - name: docker
+    image: docker:24-cli
+    command:
+    - sleep
+    args:
+    - infinity
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: git
+    image: alpine/git:latest
+    command:
+    - sleep
+    args:
+    - infinity
+    tty: true
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket
+'''
+        }
+    }
+    
+    environment {
+        REGISTRY = 'registry.ci.svc.cluster.local:5000'
+        IMAGE_NAME = 'lab-backend'
+        IMAGE_TAG = "v${BUILD_NUMBER}"
+        FULL_IMAGE = "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+        GIT_REPO = 'https://github.com/YOUR_USERNAME/devops-labs.git'
+        // Update this with your actual repo URL
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Checking out source code..."
+                checkout scm
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                container('docker') {
+                    echo "Building Docker image: ${FULL_IMAGE}"
+                    sh '''
+                        cd src/backend
+                        docker build -t ${FULL_IMAGE} .
+                        docker tag ${FULL_IMAGE} ${REGISTRY}/${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+        
+        stage('Push') {
+            steps {
+                container('docker') {
+                    echo "Pushing image to internal registry..."
+                    sh '''
+                        docker push ${FULL_IMAGE}
+                        docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+        
+        stage('Update GitOps') {
+            steps {
+                container('git') {
+                    echo "Updating GitOps repository with new image tag..."
+                    sh '''
+                        # Configure git
+                        git config --global user.email "jenkins@devops-lab.local"
+                        git config --global user.name "Jenkins CI"
+                        
+                        # Update the backend.yaml with new image tag
+                        sed -i "s|image: .*lab-backend:.*|image: ${FULL_IMAGE}|g" gitops-root/templates/backend.yaml
+                        
+                        # Also update imagePullPolicy for registry images
+                        sed -i "s|imagePullPolicy: Never|imagePullPolicy: Always|g" gitops-root/templates/backend.yaml
+                        
+                        # Show the change
+                        echo "Updated backend.yaml:"
+                        grep -A2 "image:" gitops-root/templates/backend.yaml
+                    '''
+                }
+            }
+        }
+        
+        stage('Commit & Push') {
+            when {
+                // Only commit when not in a PR/testing scenario
+                expression { return env.GIT_BRANCH == 'main' || env.GIT_BRANCH == 'origin/main' }
+            }
+            steps {
+                container('git') {
+                    echo "Committing changes to Git..."
+                    withCredentials([usernamePassword(credentialsId: 'git-credentials', 
+                                                       usernameVariable: 'GIT_USER', 
+                                                       passwordVariable: 'GIT_PASS')]) {
+                        sh '''
+                            # Check if there are changes
+                            if git diff --quiet gitops-root/templates/backend.yaml; then
+                                echo "No changes to commit"
+                            else
+                                git add gitops-root/templates/backend.yaml
+                                git commit -m "chore: update backend image to ${IMAGE_TAG} [skip ci]"
+                                
+                                # Push using credentials
+                                git push https://${GIT_USER}:${GIT_PASS}@github.com/YOUR_USERNAME/devops-labs.git HEAD:main
+                                
+                                echo "Changes pushed to Git. ArgoCD will pick them up automatically."
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo """
+            ============================================
+            Pipeline completed successfully!
+            ============================================
+            Image: ${FULL_IMAGE}
+            
+            ArgoCD will automatically sync the new image tag.
+            Check: http://argocd.localhost
+            """
+        }
+        failure {
+            echo "Pipeline failed! Check the logs above for details."
+        }
+        always {
+            container('docker') {
+                sh 'docker image prune -f || true'
+            }
+        }
+    }
+}

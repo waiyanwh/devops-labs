@@ -281,6 +281,86 @@ install_rabbitmq() {
 }
 
 # ============================================================================
+# Local Docker Registry Installation
+# ============================================================================
+
+install_registry() {
+    echo_header "Installing Local Docker Registry"
+
+    # Create namespace
+    kubectl create namespace "${CI_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+    # Apply registry manifests
+    echo_info "Deploying Docker Registry..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/ci/registry.yaml"
+
+    # Wait for registry to be ready
+    echo_info "Waiting for Registry to be ready..."
+    kubectl wait --for=condition=available --timeout=120s deployment/registry -n "${CI_NAMESPACE}"
+
+    echo_info "Local Docker Registry installed successfully!"
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║              Docker Registry Info                          ║${NC}"
+    echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${GREEN}║${NC}  Internal: ${REGISTRY_HOSTNAME}:${REGISTRY_PORT}      ${GREEN}║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+# ============================================================================
+# Jenkins Installation
+# ============================================================================
+
+install_jenkins() {
+    echo_header "Installing Jenkins"
+
+    # Ensure namespace exists
+    kubectl create namespace "${CI_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+    # Add Jenkins Helm repo (official jenkinsci repo)
+    echo_info "Adding Jenkins Helm repository..."
+    helm repo add jenkinsci https://charts.jenkins.io 2>/dev/null || true
+    helm repo update
+
+    # Install Jenkins (latest version)
+    echo_info "Installing Jenkins via Helm..."
+    helm upgrade --install jenkins jenkinsci/jenkins \
+        --namespace "${CI_NAMESPACE}" \
+        -f "${SCRIPT_DIR}/k8s/ci/jenkins-values.yaml" \
+        --wait --timeout 10m
+
+    echo_info "Jenkins installed successfully!"
+
+    # Apply IngressRoute
+    echo_info "Applying Jenkins IngressRoute..."
+    kubectl apply -f "${SCRIPT_DIR}/k8s/ci/jenkins-ingress.yaml"
+
+    # Wait for Jenkins pod to be ready
+    echo_info "Waiting for Jenkins to be ready..."
+    kubectl wait --for=condition=ready --timeout=300s pod -l app.kubernetes.io/component=jenkins-controller -n "${CI_NAMESPACE}" || true
+
+    # Get initial admin password
+    echo_info "Retrieving Jenkins admin password..."
+    sleep 5
+    JENKINS_PASSWORD=$(kubectl exec --namespace "${CI_NAMESPACE}" -it svc/jenkins -c jenkins -- /bin/cat /run/secrets/additional/chart-admin-password 2>/dev/null || echo "pending")
+    
+    echo ""
+    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║              Jenkins Credentials                           ║${NC}"
+    echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${GREEN}║${NC}  URL:      http://${JENKINS_HOSTNAME}                        ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Username: admin                                            ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Password: ${JENKINS_PASSWORD}                     ${GREEN}║${NC}"
+    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo_info "If password shows 'pending', run this to get it:"
+    echo "  kubectl exec --namespace ${CI_NAMESPACE} -it svc/jenkins -c jenkins -- /bin/cat /run/secrets/additional/chart-admin-password"
+    echo ""
+}
+
+
+# ============================================================================
 # Verification
 # ============================================================================
 
@@ -318,6 +398,19 @@ verify_installation() {
     else
         echo -e "${YELLOW}⚠ HTTP $GRAFANA_STATUS (may still be starting)${NC}"
     fi
+
+    # Test Jenkins
+    echo -n "  Jenkins (${JENKINS_HOSTNAME}): "
+    JENKINS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${JENKINS_HOSTNAME}" http://127.0.0.1 2>/dev/null || echo "000")
+    if [ "$JENKINS_STATUS" = "200" ] || [ "$JENKINS_STATUS" = "403" ]; then
+        echo -e "${GREEN}✓ Reachable (HTTP $JENKINS_STATUS)${NC}"
+    else
+        echo -e "${YELLOW}⚠ HTTP $JENKINS_STATUS (may still be starting)${NC}"
+    fi
+
+    echo ""
+    echo_info "CI pods:"
+    kubectl get pods -n "${CI_NAMESPACE}"
 }
 
 # ============================================================================
@@ -335,6 +428,7 @@ main() {
     echo "  Prometheus Chart Version: ${PROMETHEUS_STACK_VERSION}"
     echo "  ArgoCD Namespace:         ${ARGOCD_NAMESPACE}"
     echo "  Monitoring Namespace:     ${MONITORING_NAMESPACE}"
+    echo "  CI Namespace:             ${CI_NAMESPACE}"
     echo ""
 
     check_prerequisites
@@ -343,6 +437,8 @@ main() {
     install_loki
     install_keda
     install_rabbitmq
+    install_registry
+    install_jenkins
     verify_installation
 
     echo ""
@@ -353,9 +449,10 @@ main() {
     echo "Access your services:"
     echo "  • ArgoCD:  http://${ARGOCD_HOSTNAME}   (${ARGOCD_ADMIN_USER} / <password above>)"
     echo "  • Grafana: http://${GRAFANA_HOSTNAME}  (${GRAFANA_ADMIN_USER} / ${GRAFANA_ADMIN_PASSWORD})"
+    echo "  • Jenkins: http://${JENKINS_HOSTNAME}  (admin / <password above>)"
     echo ""
     echo "Add to /etc/hosts if needed:"
-    echo "  127.0.0.1 ${ARGOCD_HOSTNAME} ${GRAFANA_HOSTNAME} rabbitmq.localhost"
+    echo "  127.0.0.1 ${ARGOCD_HOSTNAME} ${GRAFANA_HOSTNAME} rabbitmq.localhost ${JENKINS_HOSTNAME}"
     echo ""
 }
 
