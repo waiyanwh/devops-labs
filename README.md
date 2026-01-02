@@ -180,7 +180,7 @@ The Jenkinsfile uses **Kaniko** to build images (works inside k3d without Docker
 
 ```
 ┌──────────┐    ┌──────────────┐    ┌─────────────────────┐
-│ Checkout │ → │ Build & Push │ → │ Show Deploy Command │
+│ Checkout │ →  │ Build & Push │ →  │ Show Deploy Command │
 └──────────┘    └──────────────┘    └─────────────────────┘
 ```
 
