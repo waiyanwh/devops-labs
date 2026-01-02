@@ -176,23 +176,21 @@ If your pipeline needs to push changes back to Git:
 
 ### Pipeline Stages Explained
 
-The Jenkinsfile defines these stages:
+The Jenkinsfile uses **Kaniko** to build images (works inside k3d without Docker socket):
 
 ```
-┌──────────┐    ┌───────┐    ┌──────┐    ┌─────────────┐    ┌──────────────┐
-│ Checkout │ → │ Build │ → │ Push │ → │ Update GitOps│ → │ Commit & Push │
-└──────────┘    └───────┘    └──────┘    └─────────────┘    └──────────────┘
+┌──────────┐    ┌──────────────┐    ┌─────────────────────┐
+│ Checkout │ → │ Build & Push │ → │ Show Deploy Command │
+└──────────┘    └──────────────┘    └─────────────────────┘
 ```
 
 | Stage | What It Does |
 |-------|--------------|
 | **Checkout** | Clones your Git repository |
-| **Build** | Runs `docker build` to create a container image |
-| **Push** | Pushes the image to the internal registry |
-| **Update GitOps** | Modifies `gitops-root/templates/backend.yaml` with the new image tag |
-| **Commit & Push** | Commits and pushes changes back to Git |
+| **Build & Push** | Uses Kaniko to build and push image to internal registry |
+| **Show Deploy Command** | Displays the kubectl command to deploy the new image |
 
-After the pipeline completes, **ArgoCD** automatically detects the change and deploys the new version!
+> **Why Kaniko?** Since k3d runs Kubernetes inside Docker, the Docker socket (`/var/run/docker.sock`) isn't available inside the pods. Kaniko builds container images without needing a Docker daemon!
 
 ### Troubleshooting Jenkins
 
@@ -208,17 +206,24 @@ kubectl logs -n ci -l app.kubernetes.io/component=jenkins-controller
 kubectl get ingressroute -n ci
 ```
 
-**Pipeline fails at Docker commands?**
+**Pipeline fails at Kaniko build?**
 ```bash
-# Verify Docker socket is mounted in agent pods
-kubectl describe pod -n ci -l jenkins/label=docker
+# Check the build pod logs
+kubectl logs -n ci -l jenkins-build=kaniko --all-containers
+
+# Verify Kaniko can reach the registry
+kubectl run test-registry --rm -it --image=curlimages/curl --restart=Never -- \
+  curl -s http://registry.ci.svc.cluster.local:5000/v2/
 ```
 
 **Registry not accessible?**
 ```bash
-# Test registry from inside the cluster
+# Check registry pod
+kubectl get pods -n ci -l app=registry
+
+# Test registry API
 kubectl run test-registry --rm -it --image=curlimages/curl --restart=Never -- \
-  curl -s http://registry.ci.svc.cluster.local:5000/v2/
+  curl -s http://registry.ci.svc.cluster.local:5000/v2/_catalog
 ```
 
 ## Prerequisites
