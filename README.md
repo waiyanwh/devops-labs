@@ -1,6 +1,23 @@
 # DevOps Lab - Local Kubernetes Learning Environment
 
-A complete local DevOps lab featuring k3d, ArgoCD, Prometheus, Grafana, and a 3-tier demo application with full observability.
+A complete local DevOps lab featuring k3d, ArgoCD, Prometheus, Grafana, Jenkins, and a 3-tier demo application with full observability.
+
+## ⚠️ Resource Requirements
+
+> **Warning**: This lab runs multiple services and can be resource-intensive!
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| **RAM** | 8 GB | 16 GB |
+| **CPU** | 4 cores | 8 cores |
+| **Disk** | 20 GB | 40 GB |
+
+**What's running:**
+- k3d cluster (1 server + 3 agents)
+- ArgoCD, Prometheus, Grafana, Loki
+- KEDA, RabbitMQ
+- Jenkins + Docker Registry
+- Demo application (frontend, backend, worker, postgres)
 
 ## Quick Start
 
