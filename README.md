@@ -95,7 +95,9 @@ devops-labs/
 │   └── grafana-ingress.yaml
 ├── gitops/
 │   └── src/
-│       └── Jenkinsfile     # 🚀 CI/CD pipeline definition
+│       ├── Jenkinsfile.backend   # 🚀 Backend pipeline
+│       ├── Jenkinsfile.frontend  # 🚀 Frontend pipeline
+│       └── Jenkinsfile.worker    # 🚀 Worker pipeline
 └── gitops-root/            # 🔄 ArgoCD GitOps
     ├── application.yaml    # ArgoCD Application CR
     └── templates/          # Synced by ArgoCD
@@ -115,7 +117,15 @@ This lab includes a complete CI/CD pipeline using **Jenkins** and a **local Dock
 |-----------|---------|
 | **Docker Registry** | Stores built container images (`registry.ci.svc.cluster.local:5000`) |
 | **Jenkins** | CI/CD automation server with Kubernetes plugin |
-| **Jenkinsfile** | Pipeline definition in `gitops/src/Jenkinsfile` |
+| **Jenkinsfiles** | Pipeline definitions for each component |
+
+### Available Pipelines
+
+| Component | Jenkinsfile Path | Image Name |
+|-----------|------------------|------------|
+| **Backend** | `gitops/src/Jenkinsfile.backend` | `lab-backend` |
+| **Frontend** | `gitops/src/Jenkinsfile.frontend` | `lab-frontend` |
+| **Worker** | `gitops/src/Jenkinsfile.worker` | `lab-worker` |
 
 ### Getting Jenkins Admin Password
 
@@ -137,10 +147,12 @@ kubectl exec --namespace ci -it svc/jenkins -c jenkins -- \
    - **Username**: `admin`
    - **Password**: (from the command above)
 
-#### Step 2: Create a New Pipeline Job
+#### Step 2: Create Pipeline Jobs
+
+Create a job for each component (backend, frontend, worker):
 
 1. Click **"New Item"** on the left sidebar
-2. Enter a name: `devops-lab-backend`
+2. Enter a name (e.g., `devops-lab-backend`)
 3. Select **"Pipeline"** as the job type
 4. Click **OK**
 
@@ -152,8 +164,13 @@ In the job configuration page:
 2. Change **"Definition"** to: `Pipeline script from SCM`
 3. Set **"SCM"** to: `Git`
 4. Enter your **Repository URL** (e.g., `https://github.com/YOUR_USERNAME/devops-labs.git`)
-5. Set **"Script Path"** to: `gitops/src/Jenkinsfile`
+5. Set **"Script Path"** based on component:
+   - Backend: `gitops/src/Jenkinsfile.backend`
+   - Frontend: `gitops/src/Jenkinsfile.frontend`
+   - Worker: `gitops/src/Jenkinsfile.worker`
 6. Click **Save**
+
+Repeat for each component you want to build.
 
 #### Step 4: Add Git Credentials (Optional - for pushing changes back)
 
