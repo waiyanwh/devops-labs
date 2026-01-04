@@ -15,7 +15,7 @@ spec:
   # TODO: Update repoURL to your GitHub repository after pushing
   source:
     # Replace with your actual GitHub repository URL
-    repoURL: https://github.com/YOUR_USERNAME/devops-labs.git
+    repoURL: https://github.com/waiyanwh/devops-labs.git
     targetRevision: HEAD
     path: gitops-root/templates
     
